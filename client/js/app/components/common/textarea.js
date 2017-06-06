@@ -1,7 +1,3 @@
-/**
- * @jsx React.DOM
- */
-
 var React = require('react');
 var _ = require('lodash');
 
@@ -10,7 +6,7 @@ var TextareaComponent = React.createClass({
   // Convenience functions
 
   setHeight: function() {
-    var textAreaNode = this.refs[this.props.refValue].getDOMNode();
+    var textAreaNode = this.refs[this.props.refValue];
     var newHeight = textAreaNode.scrollHeight + 'px';
 
     if (newHeight != this.state.styles.height) {

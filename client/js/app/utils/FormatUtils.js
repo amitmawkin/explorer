@@ -1,9 +1,14 @@
 var _ = require('lodash');
 var S = require('string');
 var moment = require('moment');
+var ISO_DATE_FORMAT = 'YYYY-MM-DDTHH:mm:ss.SSS';
 
 function _isWrappedInSingleQuotes(value) {
   return value.substring(0, 1) === "'" && value.substring(value.length - 1) === "'";
+}
+
+function _isWrappedInDoubleQuotes(value) {
+  return value.substring(0, 1) === '"' && value.substring(value.length - 1) === '"';
 }
 
 module.exports = {
@@ -67,31 +72,47 @@ module.exports = {
     });
   },
 
+  /**
+   * Checks whether the given string is in a date format, as defined by:
+   * 'YYYY-MM-DDTHH:mm:ss.SSS'
+   * @return {Boolean} Whether or not the string is in the expected format.
+   */
+  isDateInStrictFormat: function(dateString) {
+    return moment(dateString, ISO_DATE_FORMAT, true).isValid();
+  },
+
   formatISOTimeNoTimezone: function(time) {
-    return moment(time).format('YYYY-MM-DDTHH:mm:ss.SSS');
+    return moment(new Date(time)).format('YYYY-MM-DDTHH:mm:ss.SSS');
+  },
+
+  formatISOTimeAddOffset: function(time, offset) {
+    return module.exports.formatISOTimeNoTimezone(time) + offset;
   },
 
   generateRandomId: function(prefix) {
     return (prefix || '') + (+new Date() + Math.floor(Math.random() * 999999)).toString(36);
   },
 
+  generateTempId: function() {
+    return module.exports.generateRandomId('TEMP-');
+  },
+
   isValidQueryValue: function(value) {
-    if (_.isArray(value)) {
-      return value.length > 0;
-    } else {
-      if (value === false) return true;
-      if (value === 0) return true;
-      return !_.isUndefined(value) && !_.isNull(value) && !_.isEmpty(value);
-    }
+    if (_.isArray(value)) return value.length > 0;
+    if (value === false) return true;
+    if (value === 0) return true;
+    if (_.isPlainObject(value)) return !_.isEmpty(value);
+    return !module.exports.isNullOrUndefined(value);
   },
 
   parseList: function(value) {
     if (value) {
+      if (!module.exports.isList(value)) return '';
       var parsedList = S(value).parseCSV();
 
       parsedList = _.map(parsedList, function(val) {
         if (_isWrappedInSingleQuotes(val)) {
-          quotelessVal = val.replace("'", "");
+          var quotelessVal = val.replace("'", "");
           if (parseFloat(quotelessVal)) {
             val = parseFloat(quotelessVal);
           }
@@ -103,6 +124,31 @@ module.exports = {
     } else {
       return '';
     }
+  },
+
+  isList: function(str) {
+    var strVal = String(str);
+    var isList = true;
+    var items = strVal.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
+    if (items) {
+      for(var i=0; i<items.length; i++) {
+        isList = (_isWrappedInSingleQuotes(items[i].trim()) || _isWrappedInDoubleQuotes(items[i].trim()));
+        if (!isList) break;
+      }
+      return isList;
+    }
+    else {
+      return false;
+    }
+
+  },
+
+  isNullOrUndefined: function(value) {
+    return (_.isNull(value) || _.isUndefined(value));
+  },
+
+  padLeft: function(value) {
+    return value < 10 ? '0' + value : value;
   }
 
 };

@@ -1,5 +1,4 @@
 var assert = require('chai').assert;
-var expect = require('chai').expect;
 var _ = require('lodash');
 var sinon = require('sinon');
 var moment = require('moment');
@@ -25,14 +24,14 @@ describe('stores/ProjectStore', function() {
           loading: true,
           eventCollections: [],
           sortedEventCollections: {},
-          projectSchema: null
+          schema: {}
         }
       );
     });
     it('should create a new project with the provided attributes', function () {
       ProjectActions.create({
         loading: false,
-        projectSchema: {
+        schema: {
           name: 'clicks'
         }
       });
@@ -43,7 +42,7 @@ describe('stores/ProjectStore', function() {
           loading: false,
           eventCollections: [],
           sortedEventCollections: {},
-          projectSchema: {
+          schema: {
             name: 'clicks'
           }
         }
@@ -57,7 +56,7 @@ describe('stores/ProjectStore', function() {
       var keys = Object.keys(ProjectStore.getAll());
       ProjectActions.update(keys[0], {
         loading: false,
-        projectSchema: {
+        schema: {
           name: 'clicks'
         }
       });
@@ -67,7 +66,7 @@ describe('stores/ProjectStore', function() {
           loading: false,
           eventCollections: [],
           sortedEventCollections: {},
-          projectSchema: {
+          schema: {
             name: 'clicks'
           }
         }

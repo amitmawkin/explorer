@@ -1,5 +1,4 @@
 var assert = require('chai').assert;
-var expect = require('chai').expect;
 var _ = require('lodash');
 var sinon = require('sinon');
 var moment = require('moment');
@@ -74,7 +73,7 @@ describe('utils/FormatUtils', function() {
 
   describe('formatISOTimeNoTimezone', function () {
     it('formats as ISO time without a timezone', function () {
-      var time = moment('2014-08-20 15:44');
+      var time = moment('2014-08-20 15:44').format();
       assert.match(FormatUtils.formatISOTimeNoTimezone(time), /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}/);
     });
   });
@@ -163,6 +162,25 @@ describe('utils/FormatUtils', function() {
         var parsedList = FormatUtils.parseList(input);
         assert.deepEqual(parsedList, ['a, banana', 1, '1.25']);
       });
+    });
+    describe('Incorrect', function () {
+      it('returns empty string for values that are not lists', function () {
+        var input = 'some name';
+        var parsedList = FormatUtils.parseList(input);
+        assert.deepEqual(parsedList, '');
+      });
+    });
+  });
+
+  describe('isList', function () {
+    it('returns true for a string in expected list format', function () {
+      assert.isTrue(FormatUtils.isList("\"a thing\", '1', '56', \"another thing\""));
+    });
+    it('returns true for a string in expected list format with comma inside quotes', function () {
+      assert.isTrue(FormatUtils.isList("\"a thing, with another thing\", '1', '56', \"another thing\""));
+    });
+    it('returns false for a string that is not in expected list format', function () {
+      assert.isFalse(FormatUtils.isList("a thing"));
     });
   });
 

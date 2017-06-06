@@ -7,6 +7,8 @@
 @import 'vendor/pickadate/classic-date';
 @import 'vendor/pickadate/classic-time';
 
+@import (less) '../../node_modules/keen-dataviz/dist/keen-dataviz.css';
+
 // Scope all styles under '#keen-explorer' to reduce conflicts.
 #keen-explorer {
 
@@ -22,6 +24,7 @@
   @import 'typography';
   @import 'colors';
   @import 'forms';
+  @import 'helpers';
 
   // Common Components
   @import 'loader';
@@ -34,10 +37,14 @@
   // Components
   @import 'dashboard';
   @import 'explorer';
+  @import 'query-builder';
   @import 'visualization';
   @import 'code-sample';
   @import 'filters';
+  @import 'funnels';
   @import 'timeframe';
+  @import 'query-actions';
+  @import 'cache-toggle';
 
 
   a {
@@ -54,19 +61,6 @@
   hr {
     margin: 10px 0;
   }
-
-  // .pseudo-select-arrow {
-  //   content: "";
-  //   position: absolute;
-  //   right: 8px;
-  //   border-color: #4D4D4D transparent;
-  //   border-style: solid;
-  //   height: 0px;
-  //   width: 0px;
-  //   border-left-width: 4px;
-  //   border-right-width: 4px;
-  // }
-  
 
   .btn .icon,
   h1 .icon,

@@ -5,20 +5,34 @@ var NoticeConstants = require('../constants/NoticeConstants');
 var ExplorerConstants = require('../constants/ExplorerConstants');
 var ExplorerStore = require('../stores/ExplorerStore');
 
-
 var CHANGE_EVENT = 'change';
 
 var _notices = {};
 
 function defaultAttrs() {
   return {
+    location: 'global',
     text: null,
     type: null
   };
 }
 
+function _removeGlobalNotices() {
+  _.each(_notices, function(val, key) {
+    if (val.location === 'global') delete _notices[key];
+  });
+}
+
+function _removeStepNotices() {
+  _.each(_notices, function(val, key) {
+    if (val.location === 'step') delete _notices[key];
+  });
+}
+
 function _create(attrs) {
-  _notices = {};
+  if (!attrs.location || attrs.location === 'global') {
+    _removeGlobalNotices();
+  }
   var tempId = "TEMP-" + (+new Date() + Math.floor(Math.random() * 999999)).toString(36);
   _notices[tempId] = _.assign(defaultAttrs(), attrs);
 }
@@ -32,11 +46,14 @@ var NoticeStore = _.assign({}, EventEmitter.prototype, {
     AppDispatcher.unregister(this.dispatchToken);
   },
 
-  getNotice: function() {
-    var keys = Object.keys(_notices);
-    if (keys.length) {
-      return _notices[keys[0]];
-    }
+  getGlobalNotice: function() {
+    return _.find(_notices, { location: 'global' });
+  },
+
+  getStepNotices: function() {
+    return _.filter(_notices, function(notice) {
+      if (notice.location === 'step') return notice;
+    });
   },
 
   clearAll: function() {
@@ -92,10 +109,18 @@ NoticeStore.dispatchToken = AppDispatcher.register(function(action) {
       break;
 
     case ExplorerConstants.EXPLORER_SAVE_FAIL:
-    var text = action.saveType === 'save' ? 'saving your query' : 'updating your query';
+      var msg;
+      var text = action.saveType === 'save' ? 'saving' : 'updating';
+      if (action.errorMsg) {
+        msg = 'Problem ' + text + ': ' + action.errorMsg;
+      } else if (action.errorResp && JSON.parse(action.errorResp.text).error_code === "OverCachedQueryLimitError") {
+        msg = 'Oops! Looks like you’ve reached your caching limit. Need more cached queries? Contact us at team@keen.io';
+      } else if (action.errorResp) {
+        msg = 'Problem ' + text + ': ' + JSON.parse(action.errorResp.text).message;
+      }
       _create({
         type: 'error',
-        text: 'There was a problem ' + text + ': ' + action.errorMsg,
+        text: msg,
         icon: 'remove-sign'
       });
       NoticeStore.emitChange();
@@ -125,6 +150,31 @@ NoticeStore.dispatchToken = AppDispatcher.register(function(action) {
         text: 'There was a problem deleting your query: ' + action.errorMsg,
         icon: 'remove-sign'
       });
+      NoticeStore.emitChange();
+      break;
+
+    case ExplorerConstants.EXPLORER_FOUND_INVALID:
+      var explorer = ExplorerStore.get(action.id);
+      _create({
+        text: 'There was a problem: ' + explorer.errors[0].msg,
+        type: 'error',
+        icon: 'remove-sign'
+      });
+      if (explorer.query.analysis_type === 'funnel') {
+        _removeStepNotices();
+        explorer.query.steps.forEach(function(step, index) {
+          if (!step.isValid) {
+            _create({
+              id: explorer.id,
+              location: 'step',
+              stepIndex: index,
+              text: step.errors[0].msg,
+              type: 'error',
+              icon: 'remove-sign',
+            });
+          }
+        });
+      }
       NoticeStore.emitChange();
       break;
 

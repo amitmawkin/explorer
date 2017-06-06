@@ -1,36 +1,33 @@
-/**
- * @jsx React.DOM
- */
-
 var React = require('react');
 var _ = require('lodash');
 var EventBrowser = require('../common/event_browser.js');
-var CSVExtraction = require('./csv_extraction.js');
 var Visualization = require('./visualization/index.js')
-var QueryPaneTabs = require('./query_pane_tabs.js');;
+var QueryPaneTabs = require('./query_pane_tabs.js');
 var QueryBuilder = require('./query_builder/index.js');
 var BrowseQueries = require('./saved_queries/browse_queries.js');
+var CacheToggle = require('./cache_toggle.js');
+var QueryActions = require('./query_actions.js');
 var Notice = require('../common/notice.js');
 var FilterManager = require('../common/filter_manager.js');
 var ExplorerStore = require('../../stores/ExplorerStore');
-var UserStore = require('../../stores/UserStore');
 var ExplorerActions = require('../../actions/ExplorerActions');
 var NoticeActions = require('../../actions/NoticeActions');
+var AppStateActions = require('../../actions/AppStateActions');
 var NoticeStore = require('../../stores/NoticeStore');
 var AppStateStore = require('../../stores/AppStateStore');
 var ExplorerUtils = require('../../utils/ExplorerUtils');
+var FilterUtils = require('../../utils/FilterUtils');
+var ProjectUtils = require('../../utils/ProjectUtils');
 var ExplorerActions = require('../../actions/ExplorerActions');
-var ValidationUtils = require('../../utils/ValidationUtils');
-var ExplorerValidations = require('../../validations/ExplorerValidations');
 var QueryStringUtils = require('../../utils/QueryStringUtils');
 
 function getStoresState() {
   return {
     allPersistedExplorers: ExplorerStore.getAllPersisted(),
     activeExplorer: ExplorerStore.getActive(),
-    notice: NoticeStore.getNotice(),
-    appState: AppStateStore.getState(),
-    user: UserStore.getUser()
+    notice: NoticeStore.getGlobalNotice(),
+    stepNotices: NoticeStore.getStepNotices(),
+    appState: AppStateStore.getState()
   };
 }
 
@@ -49,6 +46,16 @@ var Explorer = React.createClass({
   // Callbacks for child components
   // ********************************
 
+  selectEventCollection: function(collectionName) {
+    var updates = {
+      query: {
+        event_collection: collectionName
+      }
+    };
+    ExplorerActions.update(this.state.activeExplorer.id, updates);
+    this.refs['event-browser'].refs.modal.close();
+  },
+
   savedQueryClicked: function(event) {
     event.preventDefault();
     if (this.state.activeExplorer.loading) {
@@ -58,36 +65,30 @@ var Explorer = React.createClass({
         text: "There is already a query in progress. Wait for it to finish loading before selecting a query."
       });
     } else {
+      ExplorerActions.revertActiveChanges();
       var modelId = event.currentTarget.dataset.id;
       ExplorerActions.setActive(modelId);
       ExplorerActions.exec(this.props.client, modelId);
     }
   },
 
-  removeSavedQueryClicked: function(modelIndex) {
-    if (confirm("Are you sure you want to delete this query?")) {
-      var model = this.state.allPersistedExplorers[modelIndex];
-      ExplorerActions.destroy(this.props.persistence, model.id);
+  removeSavedQueryClicked: function() {
+    if (confirm('Are you sure you want to delete this saved query?')) {
+      ExplorerActions.destroy(this.props.persistence, this.state.activeExplorer.id);
     }
   },
 
   saveQueryClick: function(event) {
     event.preventDefault();
-    var validity = ValidationUtils.runValidations(ExplorerValidations.explorer, this.state.activeExplorer);
-    if (!validity.isValid) {
-      NoticeActions.create({
-        icon: 'remove-circle',
-        type: 'error',
-        text: "Can't save: " + validity.lastError
-      });
-      return;
-    } else {
-      if (ExplorerUtils.isPersisted(this.state.activeExplorer)) {
-        ExplorerActions.saveExisting(this.props.persistence, this.state.activeExplorer.id);
-      } else {
-        ExplorerActions.saveNew(this.props.persistence, this.state.activeExplorer.id);
-      }
-    }
+    ExplorerActions.save(this.props.persistence, this.state.activeExplorer.id);
+  },
+  
+  cloneQueryClick: function(event) {
+    event.preventDefault();
+    ExplorerActions.clone(this.state.activeExplorer.id);
+    var newExplorer = ExplorerStore.getLast();
+    ExplorerActions.setActive(newExplorer.id);
+    this.setState({ activeQueryPane: 'build' });
   },
 
   createNewQuery: function(event) {
@@ -104,50 +105,75 @@ var Explorer = React.createClass({
   },
 
   handleFiltersToggle: function() {
-    this.refs['filter-manager'].refs.modal.open();
+    this.refs['filter-manager'].open();
   },
 
-  onOpenCSVExtraction: function() {
-    this.refs['csv-extraction'].refs.modal.open();
+  onDisplayNameChange: function(event) {
+    var updates = {
+      query_name: ExplorerUtils.slugify(event.target.value),
+      metadata: {
+        display_name: event.target.value
+      }
+    };
+    ExplorerActions.update(this.state.activeExplorer.id, updates);
   },
 
-  onNameChange: function(event) {
-    ExplorerActions.update(this.state.activeExplorer.id, { name: event.target.value });
+  onQueryNameChange: function(event) {
+    var name = event.target.value.replace(/[^\w-]/g,'');
+    ExplorerActions.update(this.state.activeExplorer.id, { query_name: name });
+  },
+
+  handleRevertChanges: function(event) {
+    event.preventDefault();
+    ExplorerActions.revertActiveChanges();
+  },
+
+  handleQuerySubmit: function(event) {
+    event.preventDefault();
+    if (ExplorerUtils.isEmailExtraction(this.state.activeExplorer)) {
+      ExplorerActions.runEmailExtraction(this.props.client, this.state.activeExplorer.id);
+    } else {
+      ExplorerActions.exec(this.props.client, this.state.activeExplorer.id);
+    }
+  },
+
+  setExtractionType: function(event) {
+    var updates = {
+      query: {
+        email: event.target.value === 'email' ? "" : null
+      }
+    };
+    ExplorerActions.update(this.state.activeExplorer.id, updates);
+  },
+
+  handleClearQuery: function() {
+    // NOTE: (Eric Anderson, Aug 19, 2015): Awful terrible hack to
+    // ensure that the components properly display the values of the cleared
+    // model.
+    var self = this;
+    setTimeout(function(){
+      ExplorerActions.clear(self.state.activeExplorer.id);
+    }, 0);
+  },
+
+  handleAddFilter: function() {
+    ExplorerActions.addFilter(this.state.activeExplorer.id);
+  },
+
+  handleRemoveFilter: function(index) {
+    ExplorerActions.removeFilter(this.state.activeExplorer.id, index);
+  },
+
+  handleFilterChange: function(index, updates) {
+    ExplorerActions.updateFilter(this.state.activeExplorer.id, index, updates);
   },
 
   // ********************************
   // Convenience functions
   // ********************************
 
-  updateVizPosition: function(event) {
-    var options = this.props.config.options || {};
-    var scrollOffset = $(document).scrollTop();
-    var adjustedScrollOffset = scrollOffset + (options.fixedOffset || 0);
-
-    var $explorerNode = $(this.refs['root'].getDOMNode());
-    var explorerPosition = $explorerNode.offset();
-
-    var explorerTop = explorerPosition.top;
-    var explorerBottom = explorerTop + $explorerNode.outerHeight();
-
-    var vizAreaHeight = $(this.refs['viz-area'].getDOMNode()).outerHeight();
-
-    // Disable for mobile screens
-    if (window.innerHeight > window.innerWidth) {
-      this.setVizWrapTop(0);
-      return;
-    }
-
-    if (adjustedScrollOffset > explorerTop && (adjustedScrollOffset + vizAreaHeight) < explorerBottom) {
-      var offset = (adjustedScrollOffset - explorerTop);
-      this.setVizWrapTop(offset);
-    } else if (adjustedScrollOffset <= explorerTop) {
-      this.setVizWrapTop(0);
-    }
-  },
-
   setVizWrapTop: function(top) {
-    this.refs['viz-area'].getDOMNode().style.top = top + 'px';
+    this.refs['viz-area'].style.top = top + 'px';
   },
 
   getSelectedIndex: function() {
@@ -163,7 +189,7 @@ var Explorer = React.createClass({
 
   getSelectedIndex: function() {
     var index;
-    for (i=0; i<this.state.allPersistedExplorers.length; i++) {
+    for (var i=0; i<this.state.allPersistedExplorers.length; i++) {
       if (this.state.allPersistedExplorers[i].active) {
         index = i;
         break;
@@ -172,20 +198,44 @@ var Explorer = React.createClass({
     return index;
   },
 
+  toggleCodeSample: function(event) {
+    event.preventDefault();
+    AppStateActions.update({
+      codeSampleHidden: !this.state.appState.codeSampleHidden
+    });
+  },
+
+  getEventPropertyNames: function(collection)  {
+    return ProjectUtils.getEventCollectionPropertyNames(
+      this.props.project,
+      collection
+    );
+  },
+
+  getPropertyType: function (eventCollection, property_name) {
+    return ProjectUtils.getPropertyType(
+      this.props.project,
+      eventCollection,
+      property_name
+    );
+  },
+
   // Lifecycle hooks
 
   componentDidMount: function() {
     ExplorerStore.addChangeListener(this._onChange);
     NoticeStore.addChangeListener(this._onChange);
     AppStateStore.addChangeListener(this._onChange);
-    window.addEventListener('scroll', _.bind(this.updateVizPosition, this), false);
   },
 
   componentWillUnmount: function() {
     ExplorerStore.removeChangeListener(this._onChange);
     NoticeStore.removeChangeListener(this._onChange);
     AppStateStore.removeChangeListener(this._onChange);
-    window.removeEventListener('scroll', _.bind(this.updateVizPosition, this), false);
+    // Create a default filter if there are no filters already on this model
+    if (!this.state.activeExplorer.query.filters.length) {
+      ExplorerActions.addFilter(this.state.activeExplorer.id);
+    }
   },
 
   getInitialState: function() {
@@ -195,7 +245,9 @@ var Explorer = React.createClass({
   },
 
   render: function() {
-    var queryPaneTabs,
+    var cacheToggle,
+        queryPane,
+        queryPaneTabs,
         browseListNotice,
         browseEmptyContent;
 
@@ -205,6 +257,9 @@ var Explorer = React.createClass({
                                      toggleCallback={this.toggleQueryPane}
                                      createNewQuery={this.createNewQuery}
                                      persisted={ExplorerUtils.isPersisted(this.state.activeExplorer)} />;
+      if (['extraction'].indexOf(this.state.activeExplorer.query.analysis_type) === -1) {
+        cacheToggle = <CacheToggle model={this.state.activeExplorer} />;
+      }
       if (this.state.appState.fetchingPersistedExplorers) {
         browseListNotice = <Notice notice={{ icon: 'info-sign', text: 'Loading saved queries...', type: 'info' }} closable={false} />
       } else {
@@ -212,22 +267,29 @@ var Explorer = React.createClass({
       }
     }
 
-    var activeQueryPane;
     if (!this.props.persistence || this.state.activeQueryPane === 'build') {
       queryPane = <QueryBuilder ref="query-builder"
                                 model={this.state.activeExplorer}
+                                originalModel={this.state.activeExplorerOriginal}
                                 client={this.props.client}
                                 project={this.props.project}
                                 onBrowseEvents={this.onBrowseEvents}
-                                handleFiltersToggle={this.handleFiltersToggle} />;
+                                handleFiltersToggle={this.handleFiltersToggle}
+                                handleRevertChanges={this.handleRevertChanges}
+                                handleQuerySubmit={this.handleQuerySubmit}
+                                setExtractionType={this.setExtractionType}
+                                handleClearQuery={this.handleClearQuery}
+                                getEventPropertyNames={this.getEventPropertyNames}
+                                getPropertyType={this.getPropertyType}
+                                analysisTypes={ProjectUtils.getConstant('ANALYSIS_TYPES')}
+                                stepNotices={this.state.stepNotices} />;
     } else {
-      queryPane = <BrowseQueries listItems={this.state.allPersistedExplorers}
+      queryPane = <BrowseQueries ref="query-browser"
+                                 listItems={this.state.allPersistedExplorers}
                                  emptyContent={browseEmptyContent}
                                  notice={browseListNotice}
                                  clickCallback={this.savedQueryClicked}
-                                 removeCallback={this.removeSavedQueryClicked}
-                                 selectedIndex={this.getSelectedIndex()}
-                                 user={this.state.user} />;
+                                 selectedIndex={this.getSelectedIndex()} />;
     }
 
     return (
@@ -243,29 +305,48 @@ var Explorer = React.createClass({
                            client={this.props.client}
                            project={this.props.project}
                            persistence={this.props.persistence}
-                           saveQueryClick={this.saveQueryClick}
-                           onOpenCSVExtraction={this.onOpenCSVExtraction}
-                           onNameChange={this.onNameChange} />
+                           onNameChange={this.onNameChange}
+                           appState={this.state.appState}
+                           toggleCodeSample={this.toggleCodeSample}
+                           onQueryNameChange={this.onQueryNameChange}
+                           onDisplayNameChange={this.onDisplayNameChange} />
+            {cacheToggle}
+            <QueryActions model={this.state.activeExplorer}
+                          handleRevertChanges={this.handleRevertChanges}
+                          handleQuerySubmit={this.handleQuerySubmit}
+                          saveQueryClick={this.saveQueryClick}
+                          removeClick={this.removeSavedQueryClicked}
+                          cloneQueryClick={this.cloneQueryClick}
+                          persistence={this.props.persistence}
+                          codeSampleHidden={this.state.appState.codeSampleHidden}
+                          toggleCodeSample={this.toggleCodeSample} />
           </div>
         </div>
         <EventBrowser ref="event-browser"
                       client={this.props.client}
                       project={this.props.project}
-                      model={this.state.activeExplorer} />
-        <CSVExtraction ref="csv-extraction"
-                       client={this.props.client}
-                       model={this.state.activeExplorer} />
+                      currentEventCollection={this.state.activeExplorer.query.event_collection}
+                      selectEventCollection={this.selectEventCollection} />
         <FilterManager ref="filter-manager"
-                      model={this.state.activeExplorer}
-                      project={this.props.project}
-                      client={this.props.client} />
+                       eventCollection={this.state.activeExplorer.query.event_collection}
+                       filters={this.state.activeExplorer.query.filters}
+                       handleChange={this.handleFilterChange}
+                       removeFilter={this.handleRemoveFilter}
+                       addFilter={this.handleAddFilter}
+                       getPropertyType={this.getPropertyType}
+                       propertyNames={this.getEventPropertyNames(this.state.activeExplorer.query.event_collection)} />
       </div>
     );
   },
 
   _onChange: function() {
-    this.setState(getStoresState());
-    QueryStringUtils.updateSearchString(ExplorerUtils.paramsForURL(ExplorerStore.getActive()));
+    var newState = getStoresState();
+    this.setState(newState);
+    if (ExplorerUtils.isPersisted(newState.activeExplorer)) {
+      window.history.pushState({ model: newState.activeExplorer }, "", '?saved_query='+newState.activeExplorer.id);
+    } else {
+      QueryStringUtils.updateSearchString(ExplorerUtils.paramsForURL(newState.activeExplorer));
+    }
   }
 });
 

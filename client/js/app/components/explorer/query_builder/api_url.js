@@ -1,7 +1,3 @@
-/**
- * @jsx React.DOM
- */
-
 var React = require('react');
 
 var ApiUrl = React.createClass({
@@ -17,7 +13,7 @@ var ApiUrl = React.createClass({
     self.setState({ active: !self.state.active });
     if (!self.state.active) {
       setTimeout(function(){
-        self.refs['input'].getDOMNode().focus();
+        self.refs['input'].focus();
       }, 50);
     }
   },
@@ -42,7 +38,7 @@ var ApiUrl = React.createClass({
             name="api-query"
             className="form-control input-sm"
             placeholder="API Query URL will appear here..."
-            value={this.props.url}
+            value={this.props.isValid ? this.props.url : ""}
             onClick={this.handleInputSelect}
             onFocus={this.handleInputSelect}
             onChange={this.handleInputChange} />

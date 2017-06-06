@@ -1,43 +1,75 @@
-/**
- * @jsx React.DOM
- */
-
-var _ = require('lodash');
-var React = require('react/addons');
-
-var ExplorerUtils = require('../../../utils/ExplorerUtils');
+var React = require('react');
+var ChartTypeUtils = require('../../../utils/ChartTypeUtils');
 
 var KeenViz = React.createClass({
 
-	// ***********************
-	// Convenience functions
-	// ***********************
+  lastDataTimestamp: null,
+  lastChartType: null,
 
-	showVisualization: function() {
-		this.props.dataviz.destroy(); // Remove the old one first.
-  	this.props.dataviz.data({ result: this.props.model.result })
-  		.title('') // No title - not necessary for Explorer
-	    .chartType(this.props.model.visualization.chart_type)
-    	.el(this.refs['keen-viz'].getDOMNode())
-    	.height(400)
-    	.render();
-	},
+  // ***********************
+  // Convenience functions
+  // ***********************
 
-	// ***********************
-	// Lifecycle hooks
-	// ***********************
+  showVisualization: function() {
+    this.props.dataviz.destroy();
 
-	componentDidUpdate: function() {
-		this.showVisualization();
-	},
+    this.props.dataviz
+      .data(this.props.model.response)
+      .el(this.refs['keen-viz'])
+      .height(300)
+      .title(null)
+      .type(this.props.model.metadata.visualization.chart_type);
 
-	componentDidMount: function() {
-		this.showVisualization();
+    if (this.props.model.query.analysis_type !== "funnel") {
+      this.props.dataviz.sortGroups('desc')
+    }
+
+    this.props.dataviz.render();
+
+    this.lastDataTimestamp = this.props.model.dataTimestamp;
+    this.lastChartType = this.props.model.metadata.visualization.chart_type;
+  },
+
+  // ***********************
+  // Lifecycle hooks
+  // ***********************
+
+  shouldComponentUpdate: function(nextProps, nextState) {
+    if (this.lastChartType !== nextProps.model.metadata.visualization.chart_type) {
+      return true;
+    }
+    if (!this.lastDataTimestamp || this.lastDataTimestamp !== nextProps.model.dataTimestamp) {
+      return true
+    }
+    return false;
+  },
+
+  componentDidUpdate: function() {
+    this.showVisualization();
+  },
+
+  componentDidMount: function() {
+    this.showVisualization();
   },
 
   render: function() {
+  	var exportBtn;
+  	if (ChartTypeUtils.isTableChartType(this.props.model.metadata.visualization.chart_type)) {
+      exportBtn = (
+        <button className="btn btn-default btn-download-csv"
+                role="export-table"
+                type="button"
+                onClick={this.props.exportToCsv}>
+          Download CSV
+        </button>
+      );
+    }
+
     return (
-			<div ref="keen-viz"></div>
+      <div ref="keen-viz-wrapper">
+        <div ref="keen-viz"></div>
+        {exportBtn}
+      </div>
     );
   }
 });

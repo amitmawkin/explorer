@@ -1,7 +1,6 @@
 var _ = require('lodash');
-var request = require('superagent');
+var DateUtils = require('./DateUtils');
 var FormatUtils = require('./FormatUtils.js');
-var ProjectActions = require('../actions/ProjectActions');
 
 // ***********************
 // ** Project Constants
@@ -21,7 +20,8 @@ var CONSTANTS = {
     'select_unique',
     'extraction',
     'percentile',
-    'median'
+    'median',
+    'funnel'
   ],
 
   ABSOLUTE_INTERVAL_TYPES: [
@@ -59,11 +59,15 @@ var CONSTANTS = {
     { name: 'Europe/Amsterdam (GMT+01:00)',   value: 'Europe/Amsterdam',     offset: '+01:00' },
     { name: 'Europe/Stockholm (GMT+01:00)',   value: 'Europe/Stockholm',     offset: '+01:00' },
     { name: 'Europe/Prague (GMT+02:00)',      value: 'Europe/Prague',        offset: '+02:00' },
+    { name: "Asia/Istanbul (GMT+02:00)",      value: 'Asia/Istanbul',        offset: '+02:00' },
+    { name: "Europe/Istanbul (GMT+02:00)",    value: 'Europe/Istanbul',      offset: '+02:00' },
     { name: 'Europe/Copenhagen (GMT+02:00)',  value: 'Europe/Copenhagen',    offset: '+02:00' },
     { name: 'Asia/Jakarta (GMT+07:00)',       value: 'Asia/Jakarta',         offset: '+07:00' },
     { name: 'Asia/Singapore (GMT+08:00)',     value: 'Asia/Singapore',       offset: '+08:00' },
     { name: 'Australia/Perth (GMT+08:00)',    value: 'Australia/Perth',      offset: '+08:00' },
-    { name: 'Australia/Sydney (GMT+10:00)',   value: 'Australia/Sydney',     offset: '+10:00' }
+    { name: "Asia/Tokyo (GMT+09:00)",         value: 'Asia/Tokyo',           offset: '+09:00' },
+    { name: 'Australia/Sydney (GMT+10:00)',   value: 'Australia/Sydney',     offset: '+10:00' },
+    { name: "Pacific/Auckland (GMT+12:00)",   value: 'Pacific/Auckland',     offset: '+12:00' }
   ],
 
   FILTER_OPERATORS: [
@@ -123,44 +127,32 @@ module.exports = {
   },
 
   eventsUrl: function(client) {
-    var endpoint = client.config.protocol + "://" + client.config.host;
-    var projectId = client.config.projectId;
-    var readKey = client.config.readKey;
-    return endpoint+'/projects/'+projectId+'/events?api_key='+readKey;
-  },
-
-  unpackProjectSchema: function(project, projectSchema) {
-    ProjectActions.update(project.id, {
-      eventCollections: FormatUtils.sortItems(_.map(projectSchema, "name")),
-      projectSchema: projectSchema
+    return client.url('events', {
+      api_key: client.config.masterKey
     });
   },
 
-  fetchProjectSchema: function(project) {
-    return request.get(module.exports.eventsUrl(project.client))
-      .end(function(err, res){
-        if (err) {
-          throw new Error("Error fetching project schema: " + err);
-        } else {
-          module.exports.unpackProjectSchema(project, res.body);
-          ProjectActions.update(project.id, { loading: false });
-        }
-      });
+  getEventCollectionPropertyNames: function(project, collection) {
+    return project.schema[collection] ? project.schema[collection].sortedProperties : [];
   },
 
-  getEventCollectionProperties: function(project, eventCollection) {
-    var eventCollection = _.find(project.projectSchema, { name: eventCollection });
-    return eventCollection ? eventCollection.properties : {};
+  getPropertyType: function(project, collection, propertyName) {
+    var collection = project.schema[collection];
+    return collection ? collection.properties[propertyName] : null;
   },
 
-  getEventCollectionPropertyNames: function(project, eventCollection) {
-    var propertyNames = _.keys(module.exports.getEventCollectionProperties(project, eventCollection));
-    return FormatUtils.sortItems(propertyNames);
+  getLocalTimezoneOffset: function(date){
+    var offset = new Date().getTimezoneOffset();
+    if (DateUtils.isDST()) {
+      offset += 60;
+    }
+    var strSign = offset > 0 ? '-' : '+';
+    var strHours = FormatUtils.padLeft(Math.floor(offset / 60));
+    var strMinutes = FormatUtils.padLeft(offset % 60);
+    var found = _.find(CONSTANTS.TIMEZONES, function(timezone){
+      return timezone.offset === strSign + strHours + ':' + strMinutes;
+    });
+    return found ? found.value : offset * -60;
   },
-
-  getPropertyType: function(project, eventCollection, propertyName) {
-    var eventCollection = _.find(project.projectSchema, { name: eventCollection });
-    return eventCollection ? eventCollection.properties[propertyName] : null;
-  }
 
 };

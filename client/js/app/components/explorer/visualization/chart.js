@@ -1,11 +1,6 @@
-/**
- * @jsx React.DOM
- */
-
 var _ = require('lodash');
-var React = require('react/addons');
+var React = require('react');
 var Loader = require('../../common/loader.js');
-// var DataTable = require('./data_table.js');
 var KeenViz = require('./keen_viz.js');
 var ExplorerUtils = require('../../../utils/ExplorerUtils');
 var FormatUtils = require('../../../utils/FormatUtils');
@@ -17,9 +12,7 @@ var Chart = React.createClass({
 	// ***********************
 
 	buildVizContent: function() {
-	  var model = this.props.model;
-
-	  if (!model.result && model.result !== 0) {
+	  if (!this.props.model.response) {
 	  	return (
 	  	  <div ref="notice" className="big-notice">
 	  	    <div className="alert alert-info">
@@ -29,7 +22,17 @@ var Chart = React.createClass({
 	  	);
 	  }
 
-	  if (!ExplorerUtils.resultCanBeVisualized(model)) {
+	  if (ExplorerUtils.isEmailExtraction(this.props.model)) {
+	  	return (
+	  	  <div ref="notice" className="big-notice">
+	  	    <div className="alert alert-info">
+	  	      {'Email extractions don\'t have visualizations.'}
+	  	    </div>
+	  	  </div>
+	  	);
+	  }
+
+	  if (!ExplorerUtils.resultCanBeVisualized(this.props.model)) {
 	  	return (
 	  	  <div ref="notice" className="big-notice">
 	  	    <div className="alert alert-danger">
@@ -40,7 +43,7 @@ var Chart = React.createClass({
 	  	);
 	  }
 
-	  if (ExplorerUtils.resultCanBeVisualized(model)) {
+	  if (ExplorerUtils.resultCanBeVisualized(this.props.model)) {
 	    return this.buildViz();
 	  } else {
 	  	this.props.dataviz.destroy();
@@ -55,20 +58,16 @@ var Chart = React.createClass({
 
 	  if (ExplorerUtils.isJSONViz(this.props.model)) {
 	  	var content = FormatUtils.prettyPrintJSON({
-	  		result: this.props.model.result
+	  		result: this.props.model.response.result
 	  	});
 	  	chartContent = (
 	  		<textarea ref='jsonViz' className="json-view" value={content} readOnly />
 	  	);
 		}
-		// else if (ExplorerUtils.isTableViz(this.props.model)) {
-    //   chartContent = (
-		// 		<DataTable data={this.props.model.result}/>
-		// 	);
-	  // }
 		else {
 	  	chartContent = (
-	  		<KeenViz model={this.props.model} dataviz={this.props.dataviz} />
+	  		<KeenViz model={this.props.model} dataviz={this.props.dataviz}
+	  				exportToCsv={this.props.exportToCsv}/>
 	  	);
 	  }
 

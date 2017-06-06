@@ -1,10 +1,7 @@
-/**
- * @jsx React.DOM
- */
-
 var _ = require('lodash');
-var React = require('react/addons');
+var React = require('react');
 var classNames = require('classnames');
+var KeenDataviz = require('keen-dataviz');
 var Select = require('../../common/select.js');
 var Notice = require('../../common/notice.js');
 var Chart = require('./chart.js');
@@ -15,15 +12,38 @@ var ExplorerActions = require('../../../actions/ExplorerActions');
 var ExplorerStore = require('../../../stores/ExplorerStore');
 var NoticeActions = require('../../../actions/NoticeActions');
 var ExplorerUtils = require('../../../utils/ExplorerUtils');
+var ChartTypeUtils = require('../../../utils/ChartTypeUtils');
 var FormatUtils = require('../../../utils/FormatUtils');
+var DataUtils = require('../../../utils/DataUtils');
 
 var Visualization = React.createClass({
 
-  toggleCodeSample: function(event) {
-    event.preventDefault();
-    this.setState({
-      'codeSampleHidden': !this.state.codeSampleHidden
-    })
+  getInitialState: function() {
+    return {
+      focusDisplayName: false,
+      focusQueryName: false,
+      blurTimeout: 100
+    };
+  },
+
+  handleDisplayNameFocus: function(){
+    this.setState({ focusDisplayName: true });
+  },
+
+  handleDisplayNameBlur: function(){
+    setTimeout(function(){
+      this.setState({ focusDisplayName: false });
+    }.bind(this), this.state.blurTimeout);
+  },
+
+  handleQueryNameFocus: function(){
+    this.setState({ focusQueryName: true });
+  },
+
+  handleQueryNameBlur: function(){
+    setTimeout(function(){
+      this.setState({ focusQueryName: false });
+    }.bind(this), this.state.blurTimeout);
   },
 
   noticeClosed: function() {
@@ -34,13 +54,16 @@ var Visualization = React.createClass({
     var chartType = _.find(this.formatChartTypes(), function(type){
       return type.value === event.target.value;
     });
-    var updates = _.cloneDeep(this.props.model.visualization);
-    updates.chart_type = chartType.value;
-    ExplorerActions.update(this.props.model.id, { visualization: updates });
+    var updates = {
+      metadata: {
+        visualization: { chart_type: chartType.value }
+      }
+    };
+    ExplorerActions.update(this.props.model.id, updates);
   },
 
   formatChartTypes: function() {
-    return _.map(ExplorerUtils.getChartTypeOptions(this.props.model.result, this.props.model.query.analysis_type), function(type) {
+    return _.map(ChartTypeUtils.getChartTypeOptions(this.props.model.query), function(type) {
       return {
         name: (type !== 'JSON') ? FormatUtils.toTitleCase(type).replace('chart', '') : type,
         value: type
@@ -48,81 +71,73 @@ var Visualization = React.createClass({
     });
   },
 
-  getInitialState: function() {
-    return {
-      codeSampleHidden: true
-    };
+  chartType: function() {
+    if (this.props.model.metadata.visualization &&
+        this.props.model.metadata.visualization.chart_type) {
+      return this.props.model.metadata.visualization.chart_type;
+    }
+    else {
+      return _.first(ChartTypeUtils.getChartTypeOptions(this.props.model.query))
+    }
   },
 
   componentWillMount: function() {
-    this.dataviz = new Keen.Dataviz();
+    this.dataviz = new KeenDataviz();
   },
 
   componentWillUnmount: function() {
     AppDispatcher.unregister(this.dispatcherToken);
   },
 
+  exportToCsv: function() {
+    var data = this.dataviz.dataset.matrix;
+    var filename = this.props.model.query_name || 'untitled-query';
+    DataUtils.exportToCsv(data, filename);
+  },
+
   render: function() {
-    var csvExtractionBanner,
-        chartOptionsBar,
-        chartTitle,
-        saveBtn;
+    var chartTitle,
+        codeSample;
 
     var chartDetailBarClasses = classNames({
       'chart-detail-bar': true,
-      'chart-detail-active': this.props.model.result !== null && !this.props.model.loading
+      'chart-detail-bar-focus': (this.state.focusDisplayName || this.state.focusQueryName) && this.props.model.response !== null && !this.props.model.loading,
+      'chart-detail-active': this.props.model.response !== null && !this.props.model.loading
     });
 
-    var codeSampleBtnClasses = classNames({
-      'btn btn-default code-sample-toggle': true,
-      'open': !this.state.codeSampleHidden
-    });
-
-    if (this.props.model.query.analysis_type === 'extraction') {
-      csvExtractionBanner = <div className="extraction-message-component">
-                              <div className="alert">
-                                <span className="icon glyphicon glyphicon-info-sign"></span>
-                                Previews are limited to the latest {ExplorerUtils.EXRACTION_EVENT_LIMIT} events. Larger extractions are available by email.
-                              </div>
-                              <button type="button" className="btn btn-default pull-right" onClick={this.props.onOpenCSVExtraction}>
-                                Email extraction
-                              </button>
-                            </div>;
-    }
-
-    if (this.props.persistence) {
-      saveBtn = (
-        <button type="button" disabled={this.props.model.loading} ref="save-query" className="btn btn-primary save-query" onClick={this.props.saveQueryClick}>
-          {ExplorerUtils.isPersisted(this.props.model) ? 'Update' : 'Save'}
-        </button>
-      );
-    }
-
-    if (this.props.model.result !== null && !this.props.model.loading) {
-      chartOptionsBar = <div className="chart-options clearfix">
-                          <div className="pull-left">
-                            {saveBtn}
-                          </div>
-                          <div className="pull-right">
-                            <button className={codeSampleBtnClasses} onClick={this.toggleCodeSample}>
-                              <span>&lt;/&gt; Embed</span>
-                            </button>
-                          </div>
-                        </div>;
+    if (this.props.model.isValid) {
+      codeSample = ExplorerUtils.getSdkExample(this.props.model, this.props.client);
     }
 
     if (this.props.persistence) {
       chartTitle = (
         <div className="chart-title-component">
-          <input ref="input"
+          <input className="chart-display-name"
                  type="text"
-                 onChange={this.props.onNameChange}
+                 onChange={this.props.onDisplayNameChange}
+                 onBlur={this.handleDisplayNameBlur}
+                 onFocus={this.handleDisplayNameFocus}
                  spellCheck="false"
-                 value={this.props.model.name} />
+                 value={this.props.model.metadata.display_name}
+                 placeholder="Give your query a name..." />
+          <div className="chart-query-name">
+            <label>
+              Saved Query Resource Name &nbsp;
+              <a href="https://keen.io/docs/api/#saved-queries" target="_blank">
+                <i className="icon glyphicon glyphicon-question-sign"></i>
+              </a>
+            </label>
+            <input className="chart-query-name"
+                   type="text"
+                   onChange={this.props.onQueryNameChange}
+                   onBlur={this.handleQueryNameBlur}
+                   onFocus={this.handleQueryNameFocus}
+                   spellCheck="false"
+                   value={this.props.model.query_name} />
+          </div>
         </div>
       );
     }
-
 
     return (
       <div className="visualization">
@@ -137,20 +152,21 @@ var Visualization = React.createClass({
                       classes="chart-type"
                       options={this.formatChartTypes()}
                       handleSelection={this.changeChartType}
-                      selectedOption={this.props.model.visualization.chart_type}
+                      selectedOption={this.chartType()}
                       emptyOption={false}
                       disabled={this.props.model.loading} />
             </div>
           </div>
-          {csvExtractionBanner}
           <div className="chart-component">
-            <Chart model={this.props.model} dataviz={this.dataviz} />
+            <Chart model={this.props.model}
+                   dataviz={this.dataviz}
+                   exportToCsv={this.exportToCsv}/>
           </div>
-          {chartOptionsBar}
           <CodeSample ref="codesample"
-                      codeSample={ExplorerUtils.getSdkExample(this.props.model, this.props.client)}
-                      hidden={this.state.codeSampleHidden}
-                      onCloseClick={this.toggleCodeSample} />
+                      codeSample={codeSample}
+                      hidden={this.props.appState.codeSampleHidden}
+                      onCloseClick={this.props.toggleCodeSample}
+                      isValid={this.props.model.isValid} />
         </div>
       </div>
     );

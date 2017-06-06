@@ -1,21 +1,34 @@
 var assert = require('chai').assert;
-var expect = require('chai').expect;
 var App = require('../../client/js/app/app.js');
-var React = require('react/addons');
-var TestUtils = React.addons.TestUtils;
+var QueryStringUtils =  require('../../client/js/app/utils/QueryStringUtils.js');
+var React = require('react');
+var TestUtils = require('react-addons-test-utils');
 var TestHelpers = require('../support/TestHelpers.js');
 var sinon = require('sinon');
 
-describe('app', function() {
-  describe('Constructor', function () {
-    it('throws an error if persistence is passed in but no user object is passed in', function () {
-      var config = {
-        client: {},
-        persistence: {}
-      };
-      expect(function(){
-        new App(config)
-      }).to.throw("If you initialize Explorer with a persistence layer you must provide a user object as well.");
+describe('App', function() {
+  it('runs a query if the querystring has query attrs in it', function () {
+    var queryAttributesStub = sinon.stub(QueryStringUtils, 'getQueryAttributes').returns({
+      query: {
+        event_collection: 'pageview',
+        analysis_type: 'count',
+        time: {
+          relativity: 'this',
+          amount: 14,
+          sub_timeframe: 'days'
+        }
+      }
     });
+    var xhrOpenStub = sinon.stub(XMLHttpRequest.prototype, 'open');
+    var xhrSendStub = sinon.stub(XMLHttpRequest.prototype, 'send');
+
+    var clientConfig = TestHelpers.createClient();
+    var app = new App('#explorer').client(clientConfig);
+
+    assert.isTrue(queryAttributesStub.calledOnce);
+
+    QueryStringUtils.getQueryAttributes.restore();
+    xhrOpenStub.restore();
+    xhrSendStub.restore();
   });
 });

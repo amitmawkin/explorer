@@ -1,17 +1,13 @@
-/**
-* @jsx React.DOM
-*/
-
 var _ = require('lodash');
 var moment = require('moment');
-var React = require('react/addons');
+var React = require('react');
 var AbsolutePicker = require('./absolute_picker.js');
 var RelativePicker = require('./relative_picker.js');
 var FieldsToggle = require('./fields_toggle.js');
 var ReactSelect = require('./react_select.js');
 var Timezone = require('./timezone.js');
 var ExplorerActions = require('../../actions/ExplorerActions');
-var ExplorerUtils = require('../../utils/ExplorerUtils');
+var TimeframeUtils = require('../../utils/TimeframeUtils');
 var ProjectUtils = require('../../utils/ProjectUtils');
 
 function relativeDefaults() {
@@ -34,52 +30,30 @@ var Timeframe = React.createClass({
   toggleTimeframeType: function(event) {
     event.preventDefault();
     var type = event.currentTarget.dataset.type;
-    var updates = _.cloneDeep(this.props.model);
-    updates.timeframe_type = type;
-    updates.query.time = (type === 'absolute') ? absoluteDefaults() : relativeDefaults();
-    ExplorerActions.update(this.props.model.id, updates);
-  },
 
-  timeframeFieldsToggled: function(toggleState) {
-    if (toggleState && !ExplorerUtils.getTimeframe(this.props.model)) {
-      var updates = _.cloneDeep(this.props.model);
-      if (this.isRelative()) {
-        updates.query.time = relativeDefaults();
-      } else {
-        updates.query.time = absoluteDefaults();
-      }
-      ExplorerActions.update(this.props.model.id, updates);
-    }
+    this.props.handleChange('time', (type === 'absolute') ? absoluteDefaults() : relativeDefaults());
   },
 
   isAbsolute: function() {
-    return this.props.model.timeframe_type === 'absolute';
+    return TimeframeUtils.timeframeType(this.props.time) === 'absolute';
   },
 
   isRelative: function() {
-    return this.props.model.timeframe_type === 'relative';
-  },
-
-  timeframeUpdateFn: function(updates) {
-    ExplorerActions.update(this.props.model.id, {
-      query: _.assign({}, this.props.model.query, updates)
-    });
-  },
-
-  timeframeGetFn: function(attr) {
-    return this.props.model.query[attr];
+    return TimeframeUtils.timeframeType(this.props.time) === 'relative';
   },
 
   // React Methods
 
   render: function() {
-    var timezone = this.props.model.query.timezone || ProjectUtils.getConstant('DEFAULT_TIMEZONE');
+    var timezone = this.props.timezone || ProjectUtils.getConstant('DEFAULT_TIMEZONE');
 
     if (this.isAbsolute()) {
-      var timeframePicker = <AbsolutePicker model={this.props.model}/>;
+      var timeframePicker = <AbsolutePicker time={this.props.time}
+                            handleChange={this.props.handleChange} />;
     } else {
       var timeframePicker = <RelativePicker relativeIntervalTypes={ProjectUtils.getConstant('RELATIVE_INTERVAL_TYPES')}
-                                            model={this.props.model}/>;
+                                            time={this.props.time}
+                                            handleChange={this.props.handleChange} />;
     }
 
     return (
@@ -95,7 +69,9 @@ var Timeframe = React.createClass({
             </li>
           </ul>
           {timeframePicker}
-          <Timezone model={this.props.model} />
+          <Timezone timezone={this.props.timezone}
+                    timeframe_type={TimeframeUtils.timeframeType(this.props.time)}
+                    handleChange={this.props.handleChange} />
         </div>
       </div>
     );
